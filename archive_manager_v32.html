@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Archive Manager v32</title>
+<style>
+body{font-family:Arial;margin:0;background:#f1f5f9}
+.app{max-width:1400px;margin:0 auto;padding:20px}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.title{font-size:26px;font-weight:700}
+.version{font-size:12px;color:#64748b}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tab{padding:8px 12px;border-radius:8px;background:#e2e8f0;cursor:pointer}
+.tab.active{background:#0f172a;color:#fff}
+.panel{display:none}
+.panel.active{display:block}
+.card{background:#fff;padding:12px;border-radius:12px;margin-bottom:10px}
+.btn{padding:6px 10px;border-radius:8px;border:1px solid #ccc;cursor:pointer;background:#fff}
+.btn.primary{background:#2563eb;color:#fff}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:8px;border-bottom:1px solid #eee;text-align:left}
+.small{font-size:12px;color:#64748b}
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="top">
+  <div>
+    <div class="title">Archive Manager</div>
+    <div class="version">v32 (persistent demo)</div>
+  </div>
+  <button class="btn" onclick="resetData()">Reset Data</button>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data="volumes">Volumes</div>
+  <div class="tab" data="drives">Drives</div>
+  <div class="tab" data="refresh">Refresh</div>
+  <div class="tab" data="history">History</div>
+</div>
+
+<div id="volumes" class="panel active"></div>
+<div id="drives" class="panel"></div>
+<div id="refresh" class="panel"></div>
+<div id="history" class="panel"></div>
+
+</div>
+
+<script>
+let state = JSON.parse(localStorage.getItem("archiveApp")) || {
+  drives:[
+    {id:1,serial:"WD_SN123",volume:"Archive01_A",refresh:6.2,location:"Office"},
+    {id:2,serial:"WD_SN889",volume:"Archive01_B",refresh:2.0,location:"Home"},
+    {id:3,serial:"TOSH_2044",volume:"",refresh:0,location:"Desk"}
+  ],
+  history:[]
+};
+
+function save(){ localStorage.setItem("archiveApp",JSON.stringify(state)); }
+
+function render(){
+  renderVolumes();
+  renderDrives();
+  renderHistory();
+}
+
+function renderVolumes(){
+  const el=document.getElementById("volumes");
+  const vols={};
+  state.drives.forEach(d=>{
+    if(d.volume){
+      const v=d.volume.split("_")[0];
+      if(!vols[v]) vols[v]=[];
+      vols[v].push(d);
+    }
+  });
+  el.innerHTML=Object.keys(vols).map(v=>`
+    <div class="card">
+      <b>${v}</b>
+      ${vols[v].map(d=>`<div class="small">${d.volume} / ${d.serial} / ${d.location}</div>`).join("")}
+    </div>
+  `).join("");
+}
+
+function renderDrives(){
+  const el=document.getElementById("drives");
+  el.innerHTML=`
+    <div class="card">
+      <table class="table">
+        <tr><th>Serial</th><th>Volume</th><th>Refresh</th><th>Action</th></tr>
+        ${state.drives.map(d=>`
+          <tr>
+            <td>${d.serial}</td>
+            <td>${d.volume||"Unassigned"}</td>
+            <td>${d.refresh}y</td>
+            <td><button class="btn" onclick="replaceDrive(${d.id})">Replace</button></td>
+          </tr>
+        `).join("")}
+      </table>
+    </div>
+  `;
+}
+
+function renderHistory(){
+  const el=document.getElementById("history");
+  el.innerHTML=`
+    <div class="card">
+      <b>History</b>
+      ${state.history.length?state.history.map(h=>`
+        <div class="small">${h}</div>
+      `).join(""):"<div class='small'>No history yet</div>"}
+    </div>
+  `;
+}
+
+function replaceDrive(id){
+  const d=state.drives.find(x=>x.id===id);
+  const spare=state.drives.find(x=>!x.volume);
+  if(!spare){alert("No spare");return;}
+  const oldSerial=d.serial;
+  d.serial=spare.serial;
+  spare.serial="FREE_"+Math.random().toString(36).slice(5);
+  state.history.unshift("Replaced "+oldSerial+" with "+d.serial);
+  save();
+  render();
+}
+
+function resetData(){
+  localStorage.removeItem("archiveApp");
+  location.reload();
+}
+
+document.querySelectorAll(".tab").forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));
+    t.classList.add("active");
+    document.getElementById(t.dataset).classList.add("active");
+  }
+});
+
+render();
+</script>
+</body>
+</html>
