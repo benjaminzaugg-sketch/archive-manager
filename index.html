@@ -9,7 +9,7 @@
 .topbar,.card,.modal{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 1px 2px rgba(0,0,0,.03)}.topbar{padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:14px}
 .title{font-size:28px;font-weight:700}.subtitle,.version,.small{font-size:12px;color:var(--muted)}.tabs{display:flex;gap:8px;padding:8px;background:#fff;border:1px solid var(--line);border-radius:16px;margin-bottom:14px}.tab{border:none;background:transparent;padding:9px 14px;border-radius:10px;cursor:pointer}.tab.active{background:#0f172a;color:#fff}
 .panel{display:none}.panel.active{display:block}.card{padding:14px}.toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.left-tools,.right-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.search,input,select{padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;font-size:14px;background:#fff;color:var(--text)}.search{width:360px;max-width:100%}.btn{padding:8px 12px;border:1px solid #d1d5db;border-radius:10px;background:#fff;cursor:pointer}.btn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}.btn:disabled{opacity:.45;cursor:not-allowed}
+.search,input,select{padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;font-size:14px;background:#fff;color:var(--text)}.search{width:360px;max-width:100%}.btn{padding:8px 12px;border:1px solid #d1d5db;border-radius:10px;background:#fff;cursor:pointer}.btn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}.btn:disabled{opacity:.45;cursor:not-allowed}.btn.danger{background:#dc2626;color:#fff;border-color:#dc2626}
 .badge{display:inline-block;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:700}.badge.open{background:var(--soft-blue);color:var(--blue)}.badge.safe{background:#dcfce7;color:#15803d}.badge.warn{background:#fef3c7;color:#b45309}.badge.danger{background:#fee2e2;color:#b91c1c}.badge.neutral{background:#f1f5f9;color:#475569}
 .panel-note{padding:10px 12px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:13px;background:#fafafa}.grid-main{display:grid;grid-template-columns:1.05fr .95fr;gap:16px}.detail-shell{display:grid;grid-template-columns:1.1fr .9fr;gap:16px}
 .table,.verify-table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}.table th,.table td,.verify-table th,.verify-table td{padding:10px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.table th,.verify-table th{background:#f8fafc}
@@ -19,6 +19,12 @@
 .compare-scroll,.verify-grid{overflow-x:auto}.compare-grid{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(300px,1fr);gap:12px;align-items:start;min-width:max-content}.compare-col{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}.compare-head{padding:10px 12px;background:#f8fafc;border-bottom:1px solid var(--line)}.compare-row{padding:8px 10px;border-top:1px solid #eef2f7}.compare-row.missing{background:#fee2e2}
 .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.25);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}.modal{padding:18px;width:min(760px,92vw)}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.stat .big{font-size:34px;font-weight:800}.hidden{display:none}
+
+.volume-drive-grid{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.volume-drive-box{display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:start;min-width:220px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#f8fafc;position:relative}
+.drive-icon-soft{width:44px;height:52px;border-radius:6px;background:#dbeafe;opacity:.55;border:1px solid #bfdbfe}
+.drive-alert{position:absolute;top:6px;left:34px;font-size:14px}
+
 @media (max-width:1100px){.grid-main,.detail-shell,.summary-strip,.stats{grid-template-columns:1fr}}
 </style>
 </head>
@@ -58,7 +64,10 @@
   </div>
 
   <div id="volumeDetailMode" class="hidden">
-    <button class="btn" id="backToVolumesBtn">← Back to Volumes</button>
+    <div class="toolbar">
+      <div class="left-tools"><button class="btn" id="backToVolumesBtn">← Back to Volumes</button></div>
+      <div class="right-tools"><button class="btn" id="deleteVolumeBtn">Delete Volume</button></div>
+    </div>
     <div style="height:12px"></div>
     <div id="volumeStandardDetail" class="detail-shell">
       <div class="card">
@@ -211,7 +220,7 @@ function getAvailableVolumeLetters(entries){
   const used = new Set(entries.map(e => e.letter));
   const available = [];
   if (!used.has('A')) available.push('A');
-  if (used.has('A') && !used.has('B')) available.push('B');
+  if (!used.has('B')) available.push('B');
   if (used.has('A') && used.has('B')) ['C','D','E','F'].forEach(l => { if (!used.has(l)) available.push(l); });
   return available;
 }
@@ -232,8 +241,8 @@ function openAddVolumeDialog(){
           <select data-entry-index="${idx}" data-field="letter">
             ${['A','B','C','D','E','F'].filter(l => {
               if (l === entry.letter) return true;
-              if (!otherLetters.includes('A')) return l === 'A';
-              if (otherLetters.includes('A') && !otherLetters.includes('B')) return l === 'B';
+              if (!otherLetters.includes('A') && !otherLetters.includes('B')) return ['A','B'].includes(l);
+              if ((otherLetters.includes('A') && !otherLetters.includes('B')) || (!otherLetters.includes('A') && otherLetters.includes('B'))) return ['A','B'].includes(l) && !otherLetters.includes(l);
               return otherLetters.includes('A') && otherLetters.includes('B') && ['C','D','E','F'].includes(l) && !otherLetters.includes(l);
             }).map(l => `<option value="${l}" ${entry.letter===l?'selected':''}>${l}</option>`).join('')}
           </select>
@@ -321,7 +330,72 @@ function openAddVolumeDialog(){
 function addVolume(){ openAddVolumeDialog(); }
 
 
-function renderVolumes(){document.getElementById('volumesOverview').classList.toggle('hidden',volumeDetailOpen);document.getElementById('volumeDetailMode').classList.toggle('hidden',!volumeDetailOpen);const list=document.getElementById('volumeList');list.innerHTML=sortedVolumes().map(v=>{const ds=drivesForVolume(v.name);const selected=state.selectedVolumeId===v.id;return `<div class="volume-card ${selected?'selected':''} ${v.status==='CLOSED'?'closed':''}" data-volume-id="${v.id}"><div class="toolbar"><div><span class="volume-title">${v.status==='CLOSED'?'🔒 ':''}${v.name}</span><span class="volume-size">${v.size}</span></div><div>${v.status==='OPEN'?'<span class="badge open">OPEN</span>':'<span class="badge neutral">CLOSED</span>'}</div></div><div style="margin-top:8px;">${ds.length?ds.map(d=>`<div class="small">${d.volume} / ${d.serial} / Refresh ${d.refresh.toFixed(1)}y / ${d.location}</div>`).join(''):'<div class="small">No drives assigned</div>'}</div></div>`;}).join('');
+
+function deleteCurrentVolume(){
+  const vol = currentVolume();
+  if (!vol) return;
+  showModal(`
+    <h3>Delete Volume</h3>
+    <div class="panel-note">
+      Are you sure you want to remove <strong>${vol.name}</strong> from the manager?<br><br>
+      No actual drive data is being deleted — this only removes the volume registration in this app.
+    </div>
+    <div style="margin-top:14px;">
+      <button class="btn danger" id="confirmDeleteVolumeBtn">Delete Volume</button>
+      <button class="btn" id="closeModalBtn">Back</button>
+    </div>
+  `);
+  document.getElementById('confirmDeleteVolumeBtn').onclick = () => {
+    const volumeName = vol.name;
+    state.drives.forEach(d => {
+      if (groupOf(d.volume) === volumeName) {
+        d.volume = '';
+        d.assigned = false;
+      }
+    });
+    state.volumes = state.volumes.filter(v => v.id !== vol.id);
+    state.selectedVolumeId = state.volumes[0] ? state.volumes[0].id : null;
+    state.selectedFolderId = null;
+    volumeDetailOpen = false;
+    volumeCompareOpen = false;
+    persist();
+    closeModal();
+    toast(`Deleted volume ${volumeName}`);
+    renderAll();
+  };
+  document.getElementById('closeModalBtn').onclick = closeModal;
+}
+
+
+function driveWarningsForVolumeCard(d){
+  const warnings = [];
+  if (state.replacementTask && state.replacementTask.replacingId === d.id) warnings.push('replacing');
+  if (state.replacementTask && state.replacementTask.candidateId === d.id) warnings.push('candidate');
+  if (d.refresh >= 4) warnings.push('stale');
+  const siblings = state.drives.filter(x => x.id !== d.id && groupOf(x.volume) === groupOf(d.volume));
+  if (siblings.some(x => x.location === d.location)) warnings.push('sameLocation');
+  return warnings;
+}
+function driveAlertSymbol(d){
+  const warnings = driveWarningsForVolumeCard(d);
+  if (warnings.includes('sameLocation') || warnings.includes('stale')) return '⚠️';
+  if (warnings.includes('replacing')) return '🔄';
+  if (warnings.includes('candidate')) return '✨';
+  return '';
+}
+
+function renderVolumes(){document.getElementById('volumesOverview').classList.toggle('hidden',volumeDetailOpen);document.getElementById('volumeDetailMode').classList.toggle('hidden',!volumeDetailOpen);const list=document.getElementById('volumeList');list.innerHTML=sortedVolumes().map(v=>{const ds=drivesForVolume(v.name);const selected=state.selectedVolumeId===v.id;return `<div class="volume-card ${selected?'selected':''} ${v.status==='CLOSED'?'closed':''}" data-volume-id="${v.id}"><div class="toolbar"><div><span class="volume-title">${v.status==='CLOSED'?'🔒 ':''}${v.name}</span><span class="volume-size">${v.size}</span></div><div>${v.status==='OPEN'?'<span class="badge open">OPEN</span>':'<span class="badge neutral">CLOSED</span>'}</div></div><div style="margin-top:8px;">${ds.length ? `<div class="volume-drive-grid">${ds.map(d=>`
+          <div class="volume-drive-box">
+            <div class="drive-icon-soft"></div>
+            ${driveAlertSymbol(d) ? `<div class="drive-alert">${driveAlertSymbol(d)}</div>` : ``}
+            <div>
+              <div class="small">${d.volume || 'Unassigned'}</div>
+              <div><strong>${d.serial}</strong></div>
+              <div class="small">Refresh ${d.refresh.toFixed(1)}y</div>
+              <div class="small">${d.location}</div>
+            </div>
+          </div>
+        `).join('')}</div>` : '<div class="small">No drives assigned</div>'}</div></div>`;}).join('');
  document.querySelectorAll('[data-volume-id]').forEach(el=>{el.onclick=()=>{state.selectedVolumeId=el.dataset.volumeId;persist();renderVolumes();};el.ondblclick=()=>{state.selectedVolumeId=el.dataset.volumeId;const vol=currentVolume();state.selectedFolderId=vol?.folders?.[0]?.id||null;volumeDetailOpen=true;volumeCompareOpen=false;persist();renderAll();};});
 }
 function renderVolumeDetail(){if(!volumeDetailOpen)return;const vol=currentVolume();document.getElementById('detailVolumeTitle').innerHTML=`${vol.name} <span class="volume-size">${vol.size}</span>`;document.getElementById('volumeStandardDetail').classList.toggle('hidden',volumeCompareOpen);document.getElementById('volumeCompareMode').classList.toggle('hidden',!volumeCompareOpen);
@@ -355,6 +429,7 @@ document.getElementById('newVolumeBtn').onclick=addVolume;
 document.getElementById('resetDataBtn').onclick=()=>{localStorage.removeItem(STORAGE_KEY);state=defaultState();volumeDetailOpen=false;volumeCompareOpen=false;volumeIssuesOnly=false;persist();toast('Persistent data reset.');renderAll();};
 document.getElementById('volumeSort').onchange=renderVolumes;
 document.getElementById('backToVolumesBtn').onclick=()=>{volumeDetailOpen=false;volumeCompareOpen=false;renderAll();};
+document.getElementById('deleteVolumeBtn').onclick=deleteCurrentVolume;
 document.getElementById('backToDetailBtn').onclick=()=>{volumeCompareOpen=false;renderVolumeDetail();};
 document.getElementById('issuesOnlyBtn').onclick=()=>{volumeIssuesOnly=!volumeIssuesOnly;renderVolumeDetail();};
 document.getElementById('folderFilter').addEventListener('input',renderVolumeDetail);
