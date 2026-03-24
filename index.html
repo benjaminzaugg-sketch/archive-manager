@@ -34,11 +34,11 @@
   <div>
     <div class="title">Archive Manager</div>
     <div class="subtitle">Observer and registrar for archive volumes, drives, refresh verification, and history.</div>
-    <div class="version"><strong>v38</strong> — full persistent rebuild</div>
+    <div class="version"><strong>v39</strong> — full persistent rebuild</div>
   </div>
   <div class="right-tools">
     <input id="globalSearch" class="search" placeholder="Global search...">
-    <button class="btn" id="resetDataBtn">Reset Persistent Data</button>
+    <button class="btn" id="populateDemoBtn">Populate Demo Data</button><button class="btn" id="resetDataBtn">Reset Persistent Data</button>
   </div>
 </div>
 
@@ -224,18 +224,27 @@ function getAvailableVolumeLetters(entries){
   if (used.has('A') && used.has('B')) ['C','D','E','F'].forEach(l => { if (!used.has(l)) available.push(l); });
   return available;
 }
+
 function openAddVolumeDialog(){
   const unassigned = state.drives.filter(d => !d.assigned);
   let entries = [];
+  let draftName = `Archive${String(state.nextVolumeNumber).padStart(2,'0')}`;
+  let draftSize = '8TB';
+
+  function availableLetters(entries){
+    const used = new Set(entries.map(e => e.letter));
+    const out = [];
+    if (!used.has('A')) out.push('A');
+    if (!used.has('B')) out.push('B');
+    if (used.has('A') && used.has('B')) ['C','D','E','F'].forEach(l => { if (!used.has(l)) out.push(l); });
+    return out;
+  }
 
   function renderBuilder(){
     const remainingDrives = () => unassigned.filter(d => !entries.some(e => e.driveId === d.id));
     const diskRows = entries.map((entry, idx) => {
-      const availableDriveOptions = unassigned.filter(d => d.id === entry.driveId || !entries.some((e, i) => i !== idx && e.driveId === d.id));
+      const availableDriveOptions = unassigned.filter(d => d.id === entry.driveId || !entries.some((e,i) => i !== idx && e.driveId === d.id));
       const otherLetters = entries.filter((_, i) => i !== idx).map(e => e.letter);
-      const possibleLetters = ['A','B','C','D','E','F'].filter(l => {
-        if (l === entry.letter) return true;
-      });
       return `
         <div style="display:grid;grid-template-columns:120px 1fr auto;gap:8px;align-items:center;margin-bottom:8px;">
           <select data-entry-index="${idx}" data-field="letter">
@@ -254,16 +263,16 @@ function openAddVolumeDialog(){
       `;
     }).join('');
 
-    const nextLetters = getAvailableVolumeLetters(entries);
+    const nextLetters = availableLetters(entries);
     const nextDrives = remainingDrives();
 
     document.getElementById('modal').innerHTML = `
       <h3>Add Volume</h3>
       <div class="small">Name the volume, set a size, and assign unassigned drives as A / B / C...</div>
       <div class="small" style="margin-top:12px;">Volume Name</div>
-      <input id="newVolumeName" placeholder="e.g. Archive08">
+      <input id="newVolumeName" value="${draftName}" placeholder="e.g. Archive08">
       <div class="small" style="margin-top:10px;">Size</div>
-      <input id="newVolumeSize" placeholder="e.g. 8TB">
+      <input id="newVolumeSize" value="${draftSize}" placeholder="e.g. 8TB">
       <div class="small" style="margin-top:14px;">Disks</div>
       <div>${diskRows || '<div class="small">No disks added yet.</div>'}</div>
       <div style="margin-top:10px;">
@@ -276,9 +285,12 @@ function openAddVolumeDialog(){
       </div>
     `;
 
+    document.getElementById('newVolumeName').oninput = (e) => draftName = e.target.value;
+    document.getElementById('newVolumeSize').oninput = (e) => draftSize = e.target.value;
+
     const addBtn = document.getElementById('addDiskBtn');
     if (addBtn) addBtn.onclick = () => {
-      const letters = getAvailableVolumeLetters(entries);
+      const letters = availableLetters(entries);
       const drivesAvail = remainingDrives();
       if (!letters.length || !drivesAvail.length) return;
       entries.push({letter: letters[0], driveId: drivesAvail[0].id});
@@ -301,8 +313,8 @@ function openAddVolumeDialog(){
     });
 
     document.getElementById('saveVolumeBtn').onclick = () => {
-      const name = document.getElementById('newVolumeName').value.trim();
-      const size = document.getElementById('newVolumeSize').value.trim() || '0TB';
+      const name = draftName.trim();
+      const size = draftSize.trim() || '0TB';
       if (!name) return toast('Volume name is required.');
       if (state.volumes.some(v => v.name === name)) return toast('Volume name already exists.');
       if (entries.length < 2) return toast('Add at least A and B.');
@@ -327,10 +339,6 @@ function openAddVolumeDialog(){
   showModal('');
   renderBuilder();
 }
-function addVolume(){ openAddVolumeDialog(); }
-
-
-
 
 function openManageVolumeDrivesDialog(){
   const vol = currentVolume();
@@ -542,6 +550,7 @@ document.getElementById('promoteBtn').onclick=promoteCandidate;
 document.getElementById('addScanDriveBtn').onclick=openAddScanDrive;
 document.getElementById('newVolumeBtn').onclick=addVolume;
 document.getElementById('resetDataBtn').onclick=()=>{localStorage.removeItem(STORAGE_KEY);state=defaultState();volumeDetailOpen=false;volumeCompareOpen=false;volumeIssuesOnly=false;persist();toast('Persistent data reset.');renderAll();};
+document.getElementById('populateDemoBtn').onclick=populateDemoData;
 document.getElementById('volumeSort').onchange=renderVolumes;
 document.getElementById('backToVolumesBtn').onclick=()=>{volumeDetailOpen=false;volumeCompareOpen=false;renderAll();};
 document.getElementById('deleteVolumeBtn').onclick=deleteCurrentVolume;
@@ -557,6 +566,35 @@ document.querySelectorAll('[data-drive-sort]').forEach(th => {
   };
 });
 document.getElementById('globalSearch').addEventListener('input',e=>{const q=e.target.value.trim().toLowerCase();if(!q)return renderAll();document.getElementById('driveTable').innerHTML=state.drives.filter(d=>d.serial.toLowerCase().includes(q)||(d.volume||'').toLowerCase().includes(q)||d.location.toLowerCase().includes(q)).map(d=>`<tr><td>${d.serial}</td><td>${d.volume||'Unassigned'}</td><td>${d.location}</td><td>${d.age.toFixed(1)}y</td><td>${d.refresh.toFixed(1)}y</td><td>${d.assigned?'Assigned':'Unassigned'}</td></tr>`).join('');});
+
+function populateDemoData(){
+  state = defaultState();
+  // extra demo drives
+  state.drives.push(
+    {id:9, serial:"WD_999", volume:"Archive07_A", age:0.2, refresh:0.2, location:"Office", assigned:true, driveLabel:""},
+    {id:10, serial:"WD_1000", volume:"Archive07_B", age:0.2, refresh:0.2, location:"Desk", assigned:true, driveLabel:"Desk Copy"},
+    {id:11, serial:"SG_456", volume:"Archive02_A", age:1.2, refresh:1.2, location:"Office", assigned:true, driveLabel:""},
+    {id:12, serial:"SG_457", volume:"Archive02_B", age:1.2, refresh:1.2, location:"Home", assigned:true, driveLabel:""}
+  );
+  const a2 = state.volumes.find(v => v.name === 'Archive02');
+  if (a2) {
+    a2.folders = [
+      {id:'f20', name:'00412_Project_Halo_Footage&Renders', size:420, present:['Archive02_A','Archive02_B'], sizes:{'Archive02_A':420,'Archive02_B':420}, copies:'safe'},
+      {id:'f21', name:'00413_Project_Dune_Deliverables', size:32, present:['Archive02_A','Archive02_B'], sizes:{'Archive02_A':32,'Archive02_B':32}, copies:'safe'}
+    ];
+  }
+  const a7 = state.volumes.find(v => v.name === 'Archive07');
+  if (a7) {
+    a7.folders = [
+      {id:'f70', name:'00420_NewShow_Footage&Renders', size:110, present:['Archive07_A'], sizes:{'Archive07_A':110}, copies:'missingB'}
+    ];
+  }
+  state.nextDriveId = 13;
+  persist();
+  toast('Demo data populated.');
+  renderAll();
+}
+
 function renderAll(){persist();renderVolumes();renderVolumeDetail();renderRefreshLeft();renderRefreshWorkspace();renderDrivesPanel();renderDashboard();renderHistory();}
 renderAll();
 </script>
