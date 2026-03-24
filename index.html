@@ -34,7 +34,7 @@
   <div>
     <div class="title">Archive Manager</div>
     <div class="subtitle">Observer and registrar for archive volumes, drives, refresh verification, and history.</div>
-    <div class="version">v34 — full persistent rebuild</div>
+    <div class="version"><strong>v38</strong> — full persistent rebuild</div>
   </div>
   <div class="right-tools">
     <input id="globalSearch" class="search" placeholder="Global search...">
@@ -66,7 +66,7 @@
   <div id="volumeDetailMode" class="hidden">
     <div class="toolbar">
       <div class="left-tools"><button class="btn" id="backToVolumesBtn">← Back to Volumes</button></div>
-      <div class="right-tools"><button class="btn" id="deleteVolumeBtn">Delete Volume</button></div>
+      <div class="right-tools"></div>
     </div>
     <div style="height:12px"></div>
     <div id="volumeStandardDetail" class="detail-shell">
@@ -101,7 +101,7 @@
       <div><div style="font-size:22px;font-weight:700;">Drives</div><div class="small">Drive ledger with refresh times and scan/add flow.</div></div>
       <div class="right-tools"><button class="btn primary" id="addScanDriveBtn">Add / Scan Drive</button></div>
     </div>
-    <table class="table" style="margin-top:12px;"><thead><tr><th>Serial</th><th>Volume</th><th>Location</th><th>Drive Age</th><th>Refresh</th><th>State</th></tr></thead><tbody id="driveTable"></tbody></table>
+    <table class="table" style="margin-top:12px;"><thead><tr><th data-drive-sort="serial">Serial</th><th data-drive-sort="volume">Volume</th><th data-drive-sort="location">Location</th><th data-drive-sort="age">Drive Age</th><th data-drive-sort="refresh">Refresh</th><th data-drive-sort="state">State</th></tr></thead><tbody id="driveTable"></tbody></table>
   </div>
 </div>
 
@@ -171,7 +171,7 @@ function defaultState(){return{
  history:[],selectedRefreshSerial:'WD_SN123',selectedVolumeId:'archive01',selectedFolderId:'f1',nextDriveId:9,nextVolumeNumber:8
 };}
 let state=(()=>{try{const raw=localStorage.getItem(STORAGE_KEY);return raw?JSON.parse(raw):defaultState();}catch(e){return defaultState();}})();
-let volumeDetailOpen=false,volumeCompareOpen=false,volumeIssuesOnly=false;
+let volumeDetailOpen=false,volumeCompareOpen=false,volumeIssuesOnly=false; let driveSortKey='refresh', driveSortDir=-1;
 const originalDemoRows=JSON.parse(JSON.stringify(defaultState().replacementTask.compareRows));
 function persist(){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.remove('hidden');clearTimeout(window._toastTimer);window._toastTimer=setTimeout(()=>t.classList.add('hidden'),2200);}
@@ -331,6 +331,105 @@ function addVolume(){ openAddVolumeDialog(); }
 
 
 
+
+function openManageVolumeDrivesDialog(){
+  const vol = currentVolume();
+  if (!vol) return;
+  const unassigned = state.drives.filter(d => !d.assigned || groupOf(d.volume) === vol.name);
+  let entries = drivesForVolume(vol.name).map(d => ({letter: roleLetter(d.volume), driveId: d.id}));
+
+  function availableLetters(entries){
+    const used = new Set(entries.map(e => e.letter));
+    const out = [];
+    if (!used.has('A')) out.push('A');
+    if (!used.has('B')) out.push('B');
+    if (used.has('A') && used.has('B')) ['C','D','E','F'].forEach(l => { if (!used.has(l)) out.push(l); });
+    return out;
+  }
+
+  function renderMgr(){
+    const rows = entries.map((entry, idx) => {
+      const otherLetters = entries.filter((_, i) => i !== idx).map(e => e.letter);
+      const driveOptions = unassigned.filter(d => d.id === entry.driveId || !entries.some((e,i)=>i!==idx && e.driveId===d.id));
+      return `
+        <div style="display:grid;grid-template-columns:120px 1fr auto;gap:8px;align-items:center;margin-bottom:8px;">
+          <select data-entry-index="${idx}" data-field="letter">
+            ${['A','B','C','D','E','F'].filter(l => {
+              if (l === entry.letter) return true;
+              if (!otherLetters.includes('A') && !otherLetters.includes('B')) return ['A','B'].includes(l);
+              if ((otherLetters.includes('A') && !otherLetters.includes('B')) || (!otherLetters.includes('A') && otherLetters.includes('B'))) return ['A','B'].includes(l) && !otherLetters.includes(l);
+              return otherLetters.includes('A') && otherLetters.includes('B') && ['C','D','E','F'].includes(l) && !otherLetters.includes(l);
+            }).map(l => `<option value="${l}" ${entry.letter===l?'selected':''}>${l}</option>`).join('')}
+          </select>
+          <select data-entry-index="${idx}" data-field="drive">
+            ${driveOptions.map(d => `<option value="${d.id}" ${entry.driveId===d.id?'selected':''}>${d.serial} · ${d.location}${d.assigned && groupOf(d.volume)!==vol.name ? ' (assigned)' : ''}</option>`).join('')}
+          </select>
+          <button class="btn" data-remove-entry="${idx}">Remove</button>
+        </div>
+      `;
+    }).join('');
+
+    const remainingDrives = unassigned.filter(d => !entries.some(e => e.driveId === d.id));
+    const nextLetters = availableLetters(entries);
+
+    document.getElementById('modal').innerHTML = `
+      <h3>${drivesForVolume(vol.name).length ? 'Manage Drives' : 'Add Drives'} — ${vol.name}</h3>
+      <div class="small">Assign unassigned drives into volume copy roles.</div>
+      <div style="margin-top:12px;">${rows || '<div class="small">No drives assigned yet.</div>'}</div>
+      <div style="margin-top:10px;"><button class="btn" id="addDiskToExistingBtn" ${!nextLetters.length || !remainingDrives.length ? 'disabled' : ''}>Add Disk</button></div>
+      <div class="panel-note" style="margin-top:12px;">A and B must exist before C or higher can be added.</div>
+      <div style="margin-top:14px;"><button class="btn primary" id="saveManageDrivesBtn">Save</button> <button class="btn" id="closeModalBtn">Back</button></div>
+    `;
+
+    document.getElementById('addDiskToExistingBtn')?.addEventListener('click', () => {
+      const availDrives = remainingDrives;
+      const availLetters = availableLetters(entries);
+      if (!availDrives.length || !availLetters.length) return;
+      entries.push({letter: availLetters[0], driveId: availDrives[0].id});
+      renderMgr();
+    });
+
+    document.querySelectorAll('[data-remove-entry]').forEach(btn => btn.onclick = () => {
+      entries.splice(Number(btn.dataset.removeEntry), 1);
+      renderMgr();
+    });
+
+    document.querySelectorAll('select[data-entry-index]').forEach(sel => {
+      sel.onchange = () => {
+        const idx = Number(sel.dataset.entryIndex);
+        if (sel.dataset.field === 'letter') entries[idx].letter = sel.value;
+        if (sel.dataset.field === 'drive') entries[idx].driveId = Number(sel.value);
+      };
+    });
+
+    document.getElementById('saveManageDrivesBtn').onclick = () => {
+      const letters = entries.map(e => e.letter);
+      if (entries.length && (!letters.includes('A') || !letters.includes('B'))) return toast('A and B are required before saving assigned copies.');
+      state.drives.forEach(d => {
+        if (groupOf(d.volume) === vol.name) {
+          d.volume = '';
+          d.assigned = false;
+        }
+      });
+      entries.forEach(e => {
+        const d = state.drives.find(x => x.id === e.driveId);
+        if (d) {
+          d.assigned = true;
+          d.volume = `${vol.name}_${e.letter}`;
+        }
+      });
+      persist();
+      closeModal();
+      toast(`Updated drives for ${vol.name}`);
+      renderAll();
+    };
+    document.getElementById('closeModalBtn').onclick = closeModal;
+  }
+
+  showModal('');
+  renderMgr();
+}
+
 function deleteCurrentVolume(){
   const vol = currentVolume();
   if (!vol) return;
@@ -416,7 +515,23 @@ function renderRefreshWorkspace(){const volumeDrives=drivesForVolume(selectedVol
  document.getElementById('refreshWorkspace').innerHTML=`<div class="summary-strip">${volumeDrives.map(d=>`<div class="summary-box" data-select-serial="${d.serial}" style="cursor:pointer;border:${state.selectedRefreshSerial===d.serial?'2px solid var(--blue)':'1px solid var(--line)'};"><strong>${d.volume}</strong><div class="small">${d.serial}</div><div class="small">${d.location}</div></div>`).join('')}${showCandidate&&candidate?`<div class="summary-box" data-select-serial="${candidate.serial}" style="cursor:pointer;border:${state.selectedRefreshSerial===candidate.serial?'2px solid var(--blue)':'1px solid var(--line)'};background:#eef2ff;"><strong>Candidate for new ${replacing.volume}</strong><div class="small">${candidate.serial}</div><div class="small">${candidate.location}</div></div>`:''}</div>${showCandidate?`<div class="summary-strip"><div class="summary-box"><strong>${counts.match}</strong><div class="small">Matched</div></div><div class="summary-box"><strong>${counts.missing}</strong><div class="small">Missing on Candidate</div></div><div class="summary-box"><strong>${counts.mismatch}</strong><div class="small">Size mismatches</div></div><div class="summary-box"><strong>${canPromote()?'Ready':'Blocked'}</strong><div class="small">${canPromote()?'Safe to promote':'Needs more verification'}</div></div></div><div class="panel-note" style="margin:12px 0;">Promotion will move Candidate into ${replacing.volume} and set current ${replacing.volume} drive to Unassigned.</div><div style="margin-bottom:12px;"><button class="btn" id="cancelReplaceBtn">Cancel Replacement</button></div><table class="verify-table"><thead><tr><th>Folder</th><th>${replacing.volume}</th><th>${volumeDrives.find(x=>x.id!==replacing.id)?.volume||'Other Copy'}</th><th>Candidate</th><th>Status</th></tr></thead><tbody>${state.replacementTask.compareRows.map(r=>{const status=r.Candidate==null?'Missing on Candidate':(r.Source!==r.Candidate?'Size mismatch':'Verified');return `<tr><td>${r.name}</td><td class="cell-green">${r.Source==null?'—':r.Source+' GB'}</td><td class="${r.Other==null?'cell-red':(r.Source!==r.Other?'cell-amber':'cell-green')}">${r.Other==null?'Missing':r.Other+' GB'}</td><td class="${r.Candidate==null?'cell-red':(r.Source!==r.Candidate?'cell-amber':'cell-green')}">${r.Candidate==null?'Missing':r.Candidate+' GB'}</td><td>${status==='Verified'?'<span class="badge safe">Verified</span>':status==='Size mismatch'?'<span class="badge warn">Size mismatch</span>':'<span class="badge danger">Missing</span>'}</td></tr>`;}).join('')}</tbody></table>`:`<div class="panel-note" style="margin-top:12px;">No replacement task exists for this volume. Use the <strong>Replace</strong> button against an assigned drive to choose a candidate and begin verification.</div>`}`;
  document.querySelectorAll('[data-select-serial]').forEach(el=>el.onclick=()=>setSelectedRefreshSerial(el.dataset.selectSerial));const cancelBtn=document.getElementById('cancelReplaceBtn');if(cancelBtn)cancelBtn.onclick=cancelReplacement;
 }
-function renderDrivesPanel(){document.getElementById('driveTable').innerHTML=state.drives.map(d=>`<tr><td>${d.serial}${d.driveLabel?`<div class="small">${d.driveLabel}</div>`:''}</td><td>${d.volume||'Unassigned'}</td><td>${d.location}</td><td>${d.age.toFixed(1)}y</td><td>${d.refresh.toFixed(1)}y</td><td>${state.replacementTask&&state.replacementTask.replacingId===d.id?'<span class="badge open">Replacing</span>':state.replacementTask&&state.replacementTask.candidateId===d.id?'<span class="badge open">Candidate</span>':d.assigned?'<span class="badge neutral">Assigned</span>':'<span class="badge safe">Unassigned</span>'}</td></tr>`).join('');}
+function renderDrivesPanel(){
+  const rows = [...state.drives].sort((a,b) => {
+    let va, vb;
+    if (driveSortKey === 'serial') { va = a.serial; vb = b.serial; return va.localeCompare(vb) * driveSortDir; }
+    if (driveSortKey === 'volume') { va = a.volume || 'zzz'; vb = b.volume || 'zzz'; return va.localeCompare(vb) * driveSortDir; }
+    if (driveSortKey === 'location') { va = a.location || ''; vb = b.location || ''; return va.localeCompare(vb) * driveSortDir; }
+    if (driveSortKey === 'age') return (a.age - b.age) * driveSortDir;
+    if (driveSortKey === 'refresh') return (a.refresh - b.refresh) * driveSortDir;
+    if (driveSortKey === 'state') {
+      const sa = state.replacementTask&&state.replacementTask.replacingId===a.id ? 3 : state.replacementTask&&state.replacementTask.candidateId===a.id ? 2 : a.assigned ? 1 : 0;
+      const sb = state.replacementTask&&state.replacementTask.replacingId===b.id ? 3 : state.replacementTask&&state.replacementTask.candidateId===b.id ? 2 : b.assigned ? 1 : 0;
+      return (sa - sb) * driveSortDir;
+    }
+    return 0;
+  });
+  document.getElementById('driveTable').innerHTML=rows.map(d=>`<tr><td>${d.serial}${d.driveLabel?`<div class="small">${d.driveLabel}</div>`:''}</td><td>${d.volume||'Unassigned'}</td><td>${d.location}</td><td>${d.age.toFixed(1)}y</td><td>${d.refresh.toFixed(1)}y</td><td>${state.replacementTask&&state.replacementTask.replacingId===d.id?'<span class="badge open">Replacing</span>':state.replacementTask&&state.replacementTask.candidateId===d.id?'<span class="badge open">Candidate</span>':d.assigned?'<span class="badge neutral">Assigned</span>':'<span class="badge safe">Unassigned</span>'}</td></tr>`).join('');
+}
 function renderHistory(){const body=document.getElementById('historyTable');if(!state.history.length)return body.innerHTML='<tr><td colspan="5" class="small">No replacement actions logged yet.</td></tr>';body.innerHTML=state.history.map(h=>`<tr><td>${h.date}</td><td>${h.volume}</td><td>${h.oldDrive}</td><td>${h.newDrive}</td><td>${h.action}</td></tr>`).join('');}
 function renderDashboard(){const counts=verificationCounts();document.getElementById('statIssues').textContent=counts.missing+counts.mismatch;document.getElementById('statUnassigned').textContent=state.drives.filter(d=>!d.assigned).length;document.getElementById('statActive').textContent=state.replacementTask?1:0;}
 document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{const idx=btn.dataset.tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===btn));document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById(idx).classList.add('active');}));
@@ -434,6 +549,13 @@ document.getElementById('backToDetailBtn').onclick=()=>{volumeCompareOpen=false;
 document.getElementById('issuesOnlyBtn').onclick=()=>{volumeIssuesOnly=!volumeIssuesOnly;renderVolumeDetail();};
 document.getElementById('folderFilter').addEventListener('input',renderVolumeDetail);
 document.addEventListener('click',e=>{const btn=e.target.closest('[data-replace-id]');if(btn)openReplaceDialog(Number(btn.dataset.replaceId));});
+document.querySelectorAll('[data-drive-sort]').forEach(th => {
+  th.onclick = () => {
+    const key = th.dataset.driveSort;
+    if (driveSortKey === key) driveSortDir *= -1; else { driveSortKey = key; driveSortDir = -1; }
+    renderDrivesPanel();
+  };
+});
 document.getElementById('globalSearch').addEventListener('input',e=>{const q=e.target.value.trim().toLowerCase();if(!q)return renderAll();document.getElementById('driveTable').innerHTML=state.drives.filter(d=>d.serial.toLowerCase().includes(q)||(d.volume||'').toLowerCase().includes(q)||d.location.toLowerCase().includes(q)).map(d=>`<tr><td>${d.serial}</td><td>${d.volume||'Unassigned'}</td><td>${d.location}</td><td>${d.age.toFixed(1)}y</td><td>${d.refresh.toFixed(1)}y</td><td>${d.assigned?'Assigned':'Unassigned'}</td></tr>`).join('');});
 function renderAll(){persist();renderVolumes();renderVolumeDetail();renderRefreshLeft();renderRefreshWorkspace();renderDrivesPanel();renderDashboard();renderHistory();}
 renderAll();
