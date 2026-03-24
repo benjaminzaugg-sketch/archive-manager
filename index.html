@@ -34,7 +34,7 @@
   <div>
     <div class="title">Archive Manager</div>
     <div class="subtitle">Observer and registrar for archive volumes, drives, refresh verification, and history.</div>
-    <div class="version"><strong>v39</strong> — full persistent rebuild</div>
+    <div class="version"><strong>v40</strong> — full persistent rebuild</div>
   </div>
   <div class="right-tools">
     <input id="globalSearch" class="search" placeholder="Global search...">
@@ -569,13 +569,16 @@ document.getElementById('globalSearch').addEventListener('input',e=>{const q=e.t
 
 function populateDemoData(){
   state = defaultState();
-  // extra demo drives
+
   state.drives.push(
     {id:9, serial:"WD_999", volume:"Archive07_A", age:0.2, refresh:0.2, location:"Office", assigned:true, driveLabel:""},
     {id:10, serial:"WD_1000", volume:"Archive07_B", age:0.2, refresh:0.2, location:"Desk", assigned:true, driveLabel:"Desk Copy"},
     {id:11, serial:"SG_456", volume:"Archive02_A", age:1.2, refresh:1.2, location:"Office", assigned:true, driveLabel:""},
-    {id:12, serial:"SG_457", volume:"Archive02_B", age:1.2, refresh:1.2, location:"Home", assigned:true, driveLabel:""}
+    {id:12, serial:"SG_457", volume:"Archive02_B", age:1.2, refresh:1.2, location:"Home", assigned:true, driveLabel:""},
+    {id:13, serial:"TOS_501", volume:"Archive06_A", age:4.7, refresh:4.7, location:"Office", assigned:true, driveLabel:""},
+    {id:14, serial:"TOS_502", volume:"Archive06_B", age:4.7, refresh:4.7, location:"Home", assigned:true, driveLabel:""}
   );
+
   const a2 = state.volumes.find(v => v.name === 'Archive02');
   if (a2) {
     a2.folders = [
@@ -583,13 +586,30 @@ function populateDemoData(){
       {id:'f21', name:'00413_Project_Dune_Deliverables', size:32, present:['Archive02_A','Archive02_B'], sizes:{'Archive02_A':32,'Archive02_B':32}, copies:'safe'}
     ];
   }
+
+  const a6 = state.volumes.find(v => v.name === 'Archive06');
+  if (a6) {
+    a6.folders = [
+      {id:'f60', name:'00210_OldProject_MasterRenders', size:510, present:['Archive06_A','Archive06_B'], sizes:{'Archive06_A':510,'Archive06_B':510}, copies:'safe'},
+      {id:'f61', name:'00211_OldProject_SourceFootage', size:280, present:['Archive06_A'], sizes:{'Archive06_A':280}, copies:'missingB'}
+    ];
+  }
+
   const a7 = state.volumes.find(v => v.name === 'Archive07');
   if (a7) {
     a7.folders = [
       {id:'f70', name:'00420_NewShow_Footage&Renders', size:110, present:['Archive07_A'], sizes:{'Archive07_A':110}, copies:'missingB'}
     ];
   }
-  state.nextDriveId = 13;
+
+  state.selectedVolumeId = 'archive01';
+  state.selectedFolderId = 'f1';
+  state.selectedRefreshSerial = 'WD_SN123';
+  state.nextDriveId = 15;
+  volumeDetailOpen = false;
+  volumeCompareOpen = false;
+  volumeIssuesOnly = false;
+
   persist();
   toast('Demo data populated.');
   renderAll();
