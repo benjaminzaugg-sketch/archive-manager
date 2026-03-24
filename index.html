@@ -206,7 +206,120 @@ function openAddScanDrive(){showModal(`<h3>Add / Scan Drive</h3><div class="smal
  document.getElementById('manualBtn').onclick=()=>{document.getElementById('driveFlowArea').innerHTML=`<div class="small">Serial</div><input id="manualSerial" placeholder="e.g. WD_NEW_01"><div class="small">Location</div><input id="manualLocation" value="Desk"><div class="small">Drive Age</div><input id="manualAge" value="0"><div class="small">Refresh</div><input id="manualRefresh" value="0"><div style="margin-top:12px;"><button class="btn primary" id="saveManualBtn">Save Drive</button></div>`;document.getElementById('saveManualBtn').onclick=()=>saveNewDrive('manual');};
 }
 function saveNewDrive(mode){const serial=(document.getElementById(mode==='scan'?'scannedSerial':'manualSerial').value||'').trim();if(!serial)return toast('Serial is required.');const location=(document.getElementById(mode==='scan'?'scannedLocation':'manualLocation').value||'').trim()||'Desk';const age=Number(document.getElementById(mode==='scan'?'scannedAge':'manualAge').value)||0;const refresh=Number(document.getElementById(mode==='scan'?'scannedRefresh':'manualRefresh').value)||0;state.drives.push({id:state.nextDriveId++,serial,volume:'',age,refresh,location,assigned:false,driveLabel:''});persist();closeModal();toast(`Added drive ${serial}`);renderAll();}
-function addVolume(){const n=String(state.nextVolumeNumber).padStart(2,'0');state.volumes.push({id:`archive${n}`,name:`Archive${n}`,status:'OPEN',size:'0TB',folders:[]});state.nextVolumeNumber+=1;persist();toast(`Added Archive${n}`);renderAll();}
+
+function getAvailableVolumeLetters(entries){
+  const used = new Set(entries.map(e => e.letter));
+  const available = [];
+  if (!used.has('A')) available.push('A');
+  if (used.has('A') && !used.has('B')) available.push('B');
+  if (used.has('A') && used.has('B')) ['C','D','E','F'].forEach(l => { if (!used.has(l)) available.push(l); });
+  return available;
+}
+function openAddVolumeDialog(){
+  const unassigned = state.drives.filter(d => !d.assigned);
+  let entries = [];
+
+  function renderBuilder(){
+    const remainingDrives = () => unassigned.filter(d => !entries.some(e => e.driveId === d.id));
+    const diskRows = entries.map((entry, idx) => {
+      const availableDriveOptions = unassigned.filter(d => d.id === entry.driveId || !entries.some((e, i) => i !== idx && e.driveId === d.id));
+      const otherLetters = entries.filter((_, i) => i !== idx).map(e => e.letter);
+      const possibleLetters = ['A','B','C','D','E','F'].filter(l => {
+        if (l === entry.letter) return true;
+      });
+      return `
+        <div style="display:grid;grid-template-columns:120px 1fr auto;gap:8px;align-items:center;margin-bottom:8px;">
+          <select data-entry-index="${idx}" data-field="letter">
+            ${['A','B','C','D','E','F'].filter(l => {
+              if (l === entry.letter) return true;
+              if (!otherLetters.includes('A')) return l === 'A';
+              if (otherLetters.includes('A') && !otherLetters.includes('B')) return l === 'B';
+              return otherLetters.includes('A') && otherLetters.includes('B') && ['C','D','E','F'].includes(l) && !otherLetters.includes(l);
+            }).map(l => `<option value="${l}" ${entry.letter===l?'selected':''}>${l}</option>`).join('')}
+          </select>
+          <select data-entry-index="${idx}" data-field="drive">
+            ${availableDriveOptions.map(d => `<option value="${d.id}" ${entry.driveId===d.id?'selected':''}>${d.serial} · ${d.location}</option>`).join('')}
+          </select>
+          <button class="btn" data-remove-entry="${idx}">Remove</button>
+        </div>
+      `;
+    }).join('');
+
+    const nextLetters = getAvailableVolumeLetters(entries);
+    const nextDrives = remainingDrives();
+
+    document.getElementById('modal').innerHTML = `
+      <h3>Add Volume</h3>
+      <div class="small">Name the volume, set a size, and assign unassigned drives as A / B / C...</div>
+      <div class="small" style="margin-top:12px;">Volume Name</div>
+      <input id="newVolumeName" placeholder="e.g. Archive08">
+      <div class="small" style="margin-top:10px;">Size</div>
+      <input id="newVolumeSize" placeholder="e.g. 8TB">
+      <div class="small" style="margin-top:14px;">Disks</div>
+      <div>${diskRows || '<div class="small">No disks added yet.</div>'}</div>
+      <div style="margin-top:10px;">
+        <button class="btn" id="addDiskBtn" ${nextLetters.length===0 || nextDrives.length===0 ? 'disabled' : ''}>Add Disk</button>
+      </div>
+      <div class="panel-note" style="margin-top:12px;">A and B must exist before C or higher can be added.</div>
+      <div style="margin-top:14px;">
+        <button class="btn primary" id="saveVolumeBtn">Save Volume</button>
+        <button class="btn" id="closeModalBtn">Back</button>
+      </div>
+    `;
+
+    const addBtn = document.getElementById('addDiskBtn');
+    if (addBtn) addBtn.onclick = () => {
+      const letters = getAvailableVolumeLetters(entries);
+      const drivesAvail = remainingDrives();
+      if (!letters.length || !drivesAvail.length) return;
+      entries.push({letter: letters[0], driveId: drivesAvail[0].id});
+      renderBuilder();
+    };
+
+    document.querySelectorAll('[data-remove-entry]').forEach(btn => {
+      btn.onclick = () => {
+        entries.splice(Number(btn.dataset.removeEntry), 1);
+        renderBuilder();
+      };
+    });
+
+    document.querySelectorAll('select[data-entry-index]').forEach(sel => {
+      sel.onchange = () => {
+        const idx = Number(sel.dataset.entryIndex);
+        if (sel.dataset.field === 'letter') entries[idx].letter = sel.value;
+        if (sel.dataset.field === 'drive') entries[idx].driveId = Number(sel.value);
+      };
+    });
+
+    document.getElementById('saveVolumeBtn').onclick = () => {
+      const name = document.getElementById('newVolumeName').value.trim();
+      const size = document.getElementById('newVolumeSize').value.trim() || '0TB';
+      if (!name) return toast('Volume name is required.');
+      if (state.volumes.some(v => v.name === name)) return toast('Volume name already exists.');
+      if (entries.length < 2) return toast('Add at least A and B.');
+      const letters = entries.map(e => e.letter);
+      if (!letters.includes('A') || !letters.includes('B')) return toast('A and B are required.');
+      state.volumes.push({id: name.toLowerCase(), name, status: 'OPEN', size, folders: []});
+      entries.forEach(e => {
+        const d = state.drives.find(x => x.id === e.driveId);
+        if (d) {
+          d.assigned = true;
+          d.volume = `${name}_${e.letter}`;
+        }
+      });
+      persist();
+      closeModal();
+      toast(`Added ${name}`);
+      renderAll();
+    };
+    document.getElementById('closeModalBtn').onclick = closeModal;
+  }
+
+  showModal('');
+  renderBuilder();
+}
+function addVolume(){ openAddVolumeDialog(); }
+
 
 function renderVolumes(){document.getElementById('volumesOverview').classList.toggle('hidden',volumeDetailOpen);document.getElementById('volumeDetailMode').classList.toggle('hidden',!volumeDetailOpen);const list=document.getElementById('volumeList');list.innerHTML=sortedVolumes().map(v=>{const ds=drivesForVolume(v.name);const selected=state.selectedVolumeId===v.id;return `<div class="volume-card ${selected?'selected':''} ${v.status==='CLOSED'?'closed':''}" data-volume-id="${v.id}"><div class="toolbar"><div><span class="volume-title">${v.status==='CLOSED'?'🔒 ':''}${v.name}</span><span class="volume-size">${v.size}</span></div><div>${v.status==='OPEN'?'<span class="badge open">OPEN</span>':'<span class="badge neutral">CLOSED</span>'}</div></div><div style="margin-top:8px;">${ds.length?ds.map(d=>`<div class="small">${d.volume} / ${d.serial} / Refresh ${d.refresh.toFixed(1)}y / ${d.location}</div>`).join(''):'<div class="small">No drives assigned</div>'}</div></div>`;}).join('');
  document.querySelectorAll('[data-volume-id]').forEach(el=>{el.onclick=()=>{state.selectedVolumeId=el.dataset.volumeId;persist();renderVolumes();};el.ondblclick=()=>{state.selectedVolumeId=el.dataset.volumeId;const vol=currentVolume();state.selectedFolderId=vol?.folders?.[0]?.id||null;volumeDetailOpen=true;volumeCompareOpen=false;persist();renderAll();};});
